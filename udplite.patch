@@ -1,0 +1,799 @@
+diff --new-file -crB old/common/packet.h new/common/packet.h
+*** old/common/packet.h	2010-05-10 03:58:41.000000000 +0530
+--- new/common/packet.h	2014-10-24 19:05:26.190154000 +0530
+***************
+*** 200,205 ****
+--- 200,206 ----
+  static const packet_t PT_MDART = 72;
+  	
+          // insert new packet types here
++ static const packet_t PT_UDPLite = 74;
+  static packet_t       PT_NTYPE = 73; // This MUST be the LAST one
+  
+  enum packetClass
+***************
+*** 417,422 ****
+--- 418,424 ----
+  		name_[PT_DCCP_CLOSEREQ]="DCCP_CloseReq";
+  		name_[PT_DCCP_RESET]="DCCP_Reset";
+  
++ 		name_[PT_UDPLite] = "UDPLite";
+  		name_[PT_NTYPE]= "undefined";
+  	}
+  	static int addPacket(char *name);
+diff --new-file -crB old/Makefile new/Makefile
+*** old/Makefile	2014-11-08 19:51:32.774343000 +0530
+--- new/Makefile	2014-11-08 14:31:29.046600000 +0530
+***************
+*** 333,338 ****
+--- 333,341 ----
+  	wpan/p802_15_4sscs.o wpan/p802_15_4timer.o \
+  	wpan/p802_15_4trace.o wpan/p802_15_4transac.o \
+  	apps/pbc.o \
++ 	udplite/udplitepacket.o \
++ 	udplite/udplite.o \
++ 	udplite/ermodel.o \
+  	$(OBJ_STL)
+  
+  
+***************
+*** 368,374 ****
+  	emulate/net-pcap.o \
+  	emulate/nat.o  \
+  	emulate/iptap.o \
+! 	emulate/tcptap.o
+  
+  OBJ_EMULATE_C = \
+  	emulate/inet.o
+--- 371,377 ----
+  	emulate/net-pcap.o \
+  	emulate/nat.o  \
+  	emulate/iptap.o \
+! 	emulate/tcptap.o 
+  
+  OBJ_EMULATE_C = \
+  	emulate/inet.o
+diff --new-file -crB old/Makefile.in new/Makefile.in
+*** old/Makefile.in	2011-10-23 21:59:54.000000000 +0530
+--- new/Makefile.in	2014-10-24 19:52:58.962128000 +0530
+***************
+*** 333,338 ****
+--- 333,341 ----
+  	wpan/p802_15_4sscs.o wpan/p802_15_4timer.o \
+  	wpan/p802_15_4trace.o wpan/p802_15_4transac.o \
+  	apps/pbc.o \
++ 	udplite/udplitepacket.o \
++ 	udplite/udplite.o \
++ 	udplite/ermodel.o \
+  	@V_STLOBJ@
+  
+  
+***************
+*** 368,374 ****
+  	emulate/net-pcap.o \
+  	emulate/nat.o  \
+  	emulate/iptap.o \
+! 	emulate/tcptap.o
+  
+  OBJ_EMULATE_C = \
+  	emulate/inet.o
+--- 371,377 ----
+  	emulate/net-pcap.o \
+  	emulate/nat.o  \
+  	emulate/iptap.o \
+! 	emulate/tcptap.o 
+  
+  OBJ_EMULATE_C = \
+  	emulate/inet.o
+diff --new-file -crB old/tcl/lib/ns-default.tcl new/tcl/lib/ns-default.tcl
+*** old/tcl/lib/ns-default.tcl	2010-07-04 04:15:45.000000000 +0530
+--- new/tcl/lib/ns-default.tcl	2014-11-08 14:43:30.206590000 +0530
+***************
+*** 399,404 ****
+--- 399,408 ----
+  # Error models
+  #
+  
++ ErModel set rate_ 0.0
++ ErModel set debug_ false
++ 
++ 
+  ErrorModule set debug_ false
+  
+  ErrorModel set enable_ 1
+***************
+*** 833,838 ****
+--- 837,850 ----
+  Agent/UDP instproc done {} { }
+  Agent/UDP instproc process_data {from data} { }
+  
++ Agent/UDPLite set udp_mode_ 0
++ Agent/UDPLite set packetSize_ 1000
++ Agent/UDPLite set pkts_recv_ 0.0
++ Agent/UDPLite set pkts_sent_ 0
++ Agent/UDPLite set ratio_ 10
++ Agent/UDPLite instproc done {} { }
++ Agent/UDPLite instproc process_data {from data} { }
++ 
+  Agent/SCTP set debugMask_ 0             ;# all debugging off by default
+  Agent/SCTP set debugFileIndex_ -1       ;# default outputs to stderr
+  Agent/SCTP set associationMaxRetrans_ 10;# 10 attempts
+diff --new-file -crB old/tcl/lib/ns-packet.tcl new/tcl/lib/ns-packet.tcl
+*** old/tcl/lib/ns-packet.tcl	2011-10-15 03:41:08.000000000 +0530
+--- new/tcl/lib/ns-packet.tcl	2014-10-24 19:35:44.670138000 +0530
+***************
+*** 183,188 ****
+--- 183,189 ----
+  	Encap 	# common/encap.cc
+          IPinIP 	# IP encapsulation 
+  	HDLC 	# High Level Data Link Control
++ 	UDPLite #UDPLite packet
+  }
+  set allhdrs [regsub -all {#.*?\n} $protolist \n]; # strip comments from above
+  foreach prot $allhdrs {
+diff --new-file -crB old/udplite/ermodel.cc new/udplite/ermodel.cc
+*** old/udplite/ermodel.cc	1970-01-01 05:30:00.000000000 +0530
+--- new/udplite/ermodel.cc	2014-11-08 15:36:34.610548000 +0530
+***************
+*** 0 ****
+--- 1,98 ----
++ #include "config.h"
++ #include "udplitepacket.h"
++ #include <stdio.h>
++ #include <ctype.h>
++ #include "packet.h"
++ #include "flags.h"
++ #include "mcast_ctrl.h"
++ #include "ermodel.h"
++ #include "srm-headers.h"	
++ #include "classifier.h"
++ #include <math.h>
++ 
++ static class ErModelClass : public TclClass {
++ public:
++ 	ErModelClass() : TclClass("ErModel") {}
++ 	TclObject* create(int, const char*const*) {
++ 		return (new ErModel);
++ 	}
++ } class_ermodel;
++ 
++ ErModel::ErModel()
++ {
++ 	bind("rate_", &rate_);	
++ }
++ 
++ int ErModel::command(int argc, const char*const* argv)
++ {
++ 	Tcl& tcl = Tcl::instance();
++ 	return Connector::command(argc, argv);
++ }
++ 
++ void ErModel::recv(Packet* p, Handler* h)
++ {
++ 	int i;
++ 	int count=0;
++ 	hdr_cmn *ch = hdr_cmn::access(p);
++ 	hdr_udplite *pch = hdr_udplite::access(p);
++ 
++ 	corrupt(p);
++ 
++ 
++ 	if (target_) {
++ 	       	target_->recv(p, h);
++ 	}
++ }
++ 
++ void ErModel::corrupt(Packet* p)
++ {
++ 	double randvar;
++ 	int i;
++ 	int j;
++ 	int k;
++ 
++ 	//First handle the header
++ 	hdr_udplite *pch = hdr_udplite::access(p);
++ 	for(i=0;i<UDPLITE_HEADER_SIZE;i++){
++ 		for(j=0;j<8;j++){
++ 			randvar = Random::uniform();
++ 			if(randvar < rate_){
++ 				pch->header[i] ^= 1 << j;
++ 			}
++ 		}  
++ 	}
++ 
++ 	//next check if the packet is udplite or udp
++ 
++ 	if(pch->ver == 0){
++ 		//Its a udplite packet
++ 
++ 		for(i=0;i < pch->nunits; i++){
++ 
++ 			for(j=0;j< pch->udplite_data[i].size ;j++){
++ 
++ 				for(k=0;k<8;k++){
++ 
++ 					randvar = Random::uniform();
++ 					if(randvar <rate_)
++ 						pch->udplite_data[i].data[j] ^= 1 << k;
++ 				}
++ 			}
++ 		}
++ 	}
++ 
++ 	else if(pch->ver == 1){
++ 
++ 		for(i=0;i< (pch->udp_data)->size ; i++){
++ 
++ 			for(j=0;j<8;j++){
++ 				randvar = Random::uniform();
++ 				if(randvar <rate_){
++ 					(pch->udp_data)->data[i] ^= 1 << j;
++ 				}
++ 			}
++ 		}
++ 	}
++ 
++ }
++ 
+diff --new-file -crB old/udplite/ermodel.h new/udplite/ermodel.h
+*** old/udplite/ermodel.h	1970-01-01 05:30:00.000000000 +0530
+--- new/udplite/ermodel.h	2014-11-08 14:32:40.286599000 +0530
+***************
+*** 0 ****
+--- 1,22 ----
++ #ifndef ns_ermodel_h
++ #define ns_ermodel_h
++ 
++ #include "connector.h"
++ #include "timer-handler.h"
++ #include "ranvar.h"
++ #include "packet.h"
++ #include "basetrace.h"
++ 
++ class ErModel : public Connector {
++ public:
++ 	ErModel();
++ 	virtual void recv(Packet*, Handler*);
++ 	virtual void corrupt(Packet*);
++ 	
++ protected:
++ 	virtual int command(int argc, const char*const* argv);
++ 	double rate_;		// uniform error rate in pkt or byte
++ };
++ 
++ #endif 
++ 
+diff --new-file -crB old/udplite/udplite.cc new/udplite/udplite.cc
+*** old/udplite/udplite.cc	1970-01-01 05:30:00.000000000 +0530
+--- new/udplite/udplite.cc	2014-11-08 16:45:59.470492000 +0530
+***************
+*** 0 ****
+--- 1,297 ----
++ #include "udplite.h"
++ #include "udplitepacket.h"
++ #include "rtp.h"
++ #include "random.h"
++ #include "address.h"
++ #include "ip.h"
++ 
++ 
++ static class UdpLiteAgentClass : public TclClass {
++ public:
++ 	UdpLiteAgentClass() : TclClass("Agent/UDPLite") {}
++ 	TclObject* create(int, const char*const*) {
++ 		return (new UdpLiteAgent());
++ 	}
++ } class_udplite_agent;
++ 
++ UdpLiteAgent::UdpLiteAgent() : Agent(PT_UDPLite), seqno_(-1)
++ {
++ 	bind("packetSize_", &size_);
++ 	bind("pkts_recv_", &pkts_recv_);
++ 	bind("pkts_sent_", &pkts_sent_);
++ 	bind("udp_mode_", &udp_mode_);
++ 	bind("ratio_", &ratio_);
++ }
++ 
++ UdpLiteAgent::UdpLiteAgent(packet_t type) : Agent(type)
++ {
++ 	bind("packetSize_", &size_);
++ 	bind("pkts_recv_", &pkts_recv_);
++ 	bind("pkts_sent_", &pkts_sent_);
++ 	bind("udp_mode_", &udp_mode_);
++ 	bind("ratio_", &ratio_);
++ }
++ 
++ // put in timestamp and sequence number, even though UDP doesn't usually 
++ // have one.
++ void UdpLiteAgent::sendmsg(int nbytes, AppData* data, const char* flags)
++ {
++ 	Packet *p;
++ 	int n,i;
++ 	int x;
++ 
++ 	assert (size_ > 0);
++ 	
++ 	//If default is not provided use PAYLOAD_DATA_SIZE
++ 	if(ratio_<= 0){
++ 		ratio_ = PAYLOAD_DATA_SIZE;
++ 		printf("ratio wasn't set\n");
++ 	}
++ 
++ 	//Ensure that ratio_ is even
++ 	if(ratio_%2 != 0 ){
++ 		printf("ratio was odd\n");
++ 		ratio_++;
++ 	}
++ 
++ 	//n is the number of fully filled packets required
++ 	n = nbytes / size_;
++ 
++ 
++ 	if (nbytes == -1) {
++ 		printf("Error:  sendmsg() for UDP should not be -1\n");
++ 		return;
++ 	}	
++ 
++ 	// If they are sending data, then it must fit within a single packet.
++ 	if (data && nbytes > size_) {
++ 		printf("Error: data greater than maximum UDP packet size\n");
++ 		return;
++ 	}
++ 
++ 	double local_time = Scheduler::instance().clock();
++ 
++ 	while (n-- > 0) {
++ 
++ 		//Set IP datagram headers
++ 		p = allocpkt();
++ 		hdr_cmn::access(p)->size() = size_;
++ 		hdr_rtp* rh = hdr_rtp::access(p);
++ 		rh->flags() = 0; 
++ 		rh->seqno() = ++seqno_;
++ 		hdr_cmn::access(p)->timestamp() = 
++ 		    (u_int32_t)(SAMPLERATE*local_time);
++ 		// add "beginning of talkspurt" labels (tcl/ex/test-rcvr.tcl)
++ 		if (flags && (0 ==strcmp(flags, "NEW_BURST")))
++ 			rh->flags() |= RTP_M;
++ 		p->setdata(data);
++ 
++ 		//Now process the udplite headers
++ 
++ 		if(udp_mode_ == 0){
++ 				hdr_udplite *pch = hdr_udplite::access(p);
++ 
++ 				pch->ver = 0; //This is a udplite packet
++ 				pch->nunits = ceil((float)size_/ratio_); //Compute the number of udplite_segments
++ 				pch->udplite_data = (struct udplite_payload*)malloc(sizeof(struct udplite_payload)*pch->nunits);
++ 
++ 				//compute header checksum
++ 				pch->header_checksum = compute_checksum(pch->header,UDPLITE_HEADER_SIZE);
++ 
++ 				//set data and compute checksums for individual udplite_payloads
++ 				for(i=0;i<hdr_udplite::access(p)->nunits;i++){
++ 					udplite_payload *unit = &pch->udplite_data[i];
++ 
++ 					unit->size = ratio_;
++ 					unit->data = (unsigned char *)malloc(sizeof(unsigned char)*ratio_);
++ 					unit->checksum = compute_checksum(unit->data, ratio_);
++ 				}
++ 		}
++ 		else if(udp_mode_ == 1){
++ 			//Build UDP packet header
++ 			hdr_udplite *pch = hdr_udplite::access(p);
++ 
++ 			pch->ver = 1; //This is not a udplite packet
++ 			pch->udp_data = (struct udp_payload*)malloc(sizeof(struct udp_payload));
++ 			(pch->udp_data)->data = (unsigned char *)malloc(sizeof(unsigned char)*size_);
++ 			(pch->udp_data)->size = size_;
++ 
++ 			//compute header checksum
++ 			pch->header_checksum = compute_checksum(pch->header,UDPLITE_HEADER_SIZE);
++ 
++ 			//compute udp_payload checksum
++ 			(pch->udp_data)->checksum = compute_checksum((pch->udp_data)->data , size_ );
++ 		}
++ 
++ 		pkts_sent_++;
++ 		target_->recv(p);
++ 	}
++ 	n = nbytes % size_;
++ 	if (n > 0) {
++ 		printf("mod-n %d\n",n);
++ 		p = allocpkt();
++ 		hdr_cmn::access(p)->size() = n;
++ 		hdr_rtp* rh = hdr_rtp::access(p);
++ 		rh->flags() = 0;
++ 		rh->seqno() = ++seqno_;
++ 		hdr_cmn::access(p)->timestamp() = 
++ 		    (u_int32_t)(SAMPLERATE*local_time);
++ 		// add "beginning of talkspurt" labels (tcl/ex/test-rcvr.tcl)
++ 		if (flags && (0 == strcmp(flags, "NEW_BURST")))
++ 			rh->flags() |= RTP_M;
++ 		p->setdata(data);
++ 
++ 		if(udp_mode_ == 0){
++ 			//Build UDPLite packet header
++ 				hdr_udplite *pch = hdr_udplite::access(p);
++ 
++ 				pch->ver = 0; //This is a udplite packet
++ 				pch->nunits = ceil((float)n/ratio_);
++ 				pch->udplite_data = (struct udplite_payload *)malloc(sizeof(struct udplite_payload)*pch->nunits);
++ 
++ 				//compute header checksum
++ 				pch->header_checksum = compute_checksum(pch->header,UDPLITE_HEADER_SIZE);
++ 
++ 				//set data and compute checksums for individual udplite_payloads
++ 				for(i=0;i<hdr_udplite::access(p)->nunits;i++){
++ 					udplite_payload *unit = &pch->udplite_data[i];
++ 
++ 					unit->size = ratio_;
++ 					unit->data = (unsigned char *)malloc(sizeof(unsigned char)*ratio_);
++ 					unit->checksum = compute_checksum(unit->data, ratio_);
++ 				}
++ 		}
++ 		else if(udp_mode_ == 1){
++ 			//Build UDP packet header
++ 			hdr_udplite *pch = hdr_udplite::access(p);
++ 
++ 			pch->ver = 1; //This is not a udplite packet
++ 			pch->udp_data = (struct udp_payload*)malloc(sizeof(struct udp_payload));
++ 			(pch->udp_data)->data = (unsigned char *)malloc(sizeof(unsigned char)*n);
++ 			(pch->udp_data)->size = n;
++ 
++ 			//compute header checksum
++ 			pch->header_checksum = compute_checksum(pch->header,UDPLITE_HEADER_SIZE);
++ 
++ 			//compute udp_payload checksum
++ 			(pch->udp_data)->checksum = compute_checksum((pch->udp_data)->data , n );
++ 
++ 		}
++ 		
++ 		pkts_sent_++;
++ 		target_->recv(p);
++ 	}
++ 	idle();
++ }
++ void UdpLiteAgent::recv(Packet* pkt, Handler*)
++ {
++ 	int x;
++ 
++ 	if(udp_mode_ == 0){
++ 		//It's a udplite packet
++ 		//Find out how much of the packet is actually usable
++ 		int i;
++ 		hdr_udplite *pch = hdr_udplite::access(pkt);
++ 		int count = pch->nunits;
++ 
++ 		for(i=0;i<pch->nunits;i++){
++ 			if(pch->udplite_data[i].checksum != compute_checksum(pch->udplite_data[i].data, pch->udplite_data[i].size )){
++ 				count--;
++ 			}
++ 		}
++ 
++ 		if(count == 0){
++ 			drop(pkt);
++ 			return;
++ 		}
++ 		else{
++ 			pkts_recv_ += ((float)count/pch->nunits);
++ 		}	
++ 
++ 		
++ 	}
++ 	else if(udp_mode_ == 1){
++ 		//Its a udp packet
++ 		//Find out if the packet is useful or not 
++ 		hdr_udplite *pch = hdr_udplite::access(pkt);
++ 		
++ 		if((pch->udp_data)->checksum == compute_checksum((pch->udp_data)->data , (pch->udp_data)->size ))
++ 			pkts_recv_ +=1;
++ 		else{
++ 			drop(pkt);
++ 			return;
++ 		}
++ 	}
++ 
++ 	//Standard udp implementation once the headers are sorted out
++ 	if (app_ ) {
++ 		// If an application is attached, pass the data to the app
++ 		hdr_cmn* h = hdr_cmn::access(pkt);
++ 		app_->process_data(h->size(), pkt->userdata());
++ 	} else if (pkt->userdata() && pkt->userdata()->type() == PACKET_DATA) {
++ 		// otherwise if it's just PacketData, pass it to Tcl
++ 		//
++ 		// Note that a Tcl procedure Agent/Udp recv {from data}
++ 		// needs to be defined.  For example,
++ 		//
++ 		// Agent/Udp instproc recv {from data} {puts data}
++ 
++ 		PacketData* data = (PacketData*)pkt->userdata();
++ 
++ 		hdr_ip* iph = hdr_ip::access(pkt);
++                 Tcl& tcl = Tcl::instance();
++ 		tcl.evalf("%s process_data %d {%s}", name(),
++ 		          iph->src_.addr_ >> Address::instance().NodeShift_[1],
++ 			  data->data());
++ 	}
++ 	Packet::free(pkt);
++ }
++ 
++ 
++ int UdpLiteAgent::command(int argc, const char*const* argv)
++ {
++ 	if (argc == 4) {
++ 		if (strcmp(argv[1], "send") == 0) {
++ 			PacketData* data = new PacketData(1 + strlen(argv[3]));
++ 			strcpy((char*)data->data(), argv[3]);
++ 			sendmsg(atoi(argv[2]), data);
++ 			return (TCL_OK);
++ 		}
++ 	} else if (argc == 5) {
++ 		if (strcmp(argv[1], "sendmsg") == 0) {
++ 			PacketData* data = new PacketData(1 + strlen(argv[3]));
++ 			strcpy((char*)data->data(), argv[3]);
++ 			sendmsg(atoi(argv[2]), data, argv[4]);
++ 			return (TCL_OK);
++ 		}
++ 	}
++ 	return (Agent::command(argc, argv));
++ }
++ 
++ unsigned short UdpLiteAgent::compute_checksum(unsigned char array[],short length)
++ {
++ 	//The checksum is first calculated as a 32 bit number
++ 	//Then it is condensed to a 16 bit field
++ 
++ 	unsigned long checksum=0;
++ 	unsigned short word; 
++ 	int i;
++ 
++ 
++ 	//First make 16 bit words out of every pair of adjacent bytes and add them up
++ 	for(i=0;i<length;i=i+2){
++ 
++ 		if(i+1 == length) //If length is odd, add padding
++ 			word = ((array[i]<<8) & 0xFF00) + 0x00FF;
++ 		else
++ 			word = ((array[i]<<8) & 0xFF00) + (array[i+1]&0x00FF);
++ 		checksum+=word;
++ 	}
++ 
++ 	//condense checksum to 16 bits
++ 	while(checksum >> 16){
++ 		checksum = (checksum & 0xFFFF) + (checksum >> 16);
++ 	}
++ 	checksum = ~checksum;
++ 	return (unsigned short)checksum;
++ }
+\ No newline at end of file
+diff --new-file -crB old/udplite/udplite.h new/udplite/udplite.h
+*** old/udplite/udplite.h	1970-01-01 05:30:00.000000000 +0530
+--- new/udplite/udplite.h	2014-11-08 14:32:40.986599000 +0530
+***************
+*** 0 ****
+--- 1,32 ----
++ #ifndef ns_udplite_h
++ #define ns_udplite_h
++ 
++ #include "agent.h"
++ #include "trafgen.h"
++ #include "packet.h"
++ 
++ //"rtp timestamp" needs the samplerate
++ #define SAMPLERATE 8000
++ #define RTP_M 0x0080 // marker for significant events
++ 
++ class UdpLiteAgent : public Agent {
++ public:
++ 	UdpLiteAgent();
++ 	UdpLiteAgent(packet_t);
++ 	virtual void sendmsg(int nbytes, const char *flags = 0)
++ 	{
++ 		sendmsg(nbytes, NULL, flags);
++ 	}
++ 	virtual void sendmsg(int nbytes, AppData* data, const char *flags = 0);
++ 	virtual void recv(Packet* pkt, Handler*);
++ 	virtual int command(int argc, const char*const* argv);
++ 	virtual unsigned short compute_checksum(unsigned char[],short length);
++ 	double pkts_recv_;
++ 	int pkts_sent_;
++ 	int udp_mode_;
++ 	int ratio_;
++ protected:
++ 	int seqno_;
++ };
++ 
++ #endif
+diff --new-file -crB old/udplite/udplitepacket.cc new/udplite/udplitepacket.cc
+*** old/udplite/udplitepacket.cc	1970-01-01 05:30:00.000000000 +0530
+--- new/udplite/udplitepacket.cc	2014-10-24 19:27:57.098142000 +0530
+***************
+*** 0 ****
+--- 1,10 ----
++ #include "udplitepacket.h"
++ 
++ static class UDPLiteHeaderClass : public PacketHeaderClass {
++ public:
++ 	UDPLiteHeaderClass() : PacketHeaderClass("PacketHeader/UDPLite",sizeof(hdr_udplite)) {
++ 		bind_offset(&hdr_udplite::offset_);
++ 	}
++ } class_udplite_header;
++ 
++ int hdr_udplite::offset_;
+\ No newline at end of file
+diff --new-file -crB old/udplite/udplitepacket.h new/udplite/udplitepacket.h
+*** old/udplite/udplitepacket.h	1970-01-01 05:30:00.000000000 +0530
+--- new/udplite/udplitepacket.h	2014-11-08 15:02:40.762575000 +0530
+***************
+*** 0 ****
+--- 1,44 ----
++ #ifndef UDPLITE_H_
++ #define UDPLITE_H_
++ 
++ #include "packet.h"
++ 
++ #define UDPLITE_HEADER_SIZE 16
++ #define PAYLOAD_DATA_SIZE 10
++ 
++ struct udplite_payload{
++ 	unsigned short size;
++ 	unsigned short checksum;
++ 	unsigned char *data;
++ };
++ 
++ struct udp_payload{
++ 	unsigned short size;
++ 	unsigned short checksum;
++ 	unsigned char *data;
++ };
++ 
++ 
++ struct hdr_udplite {
++ 
++ 	//Common to both udplite and udp
++ 	unsigned char ver;                //0 for udplite and 1 for udp
++ 	unsigned short header_checksum;
++ 	unsigned char header[16];          //8 byte udp header + 4 byte dest address + 4 byte source address 
++ 
++ 	//only for udplite
++ 	unsigned short nunits;
++ 	struct udplite_payload *udplite_data;
++ 
++ 	//only for udp
++ 	struct udp_payload *udp_data;
++ 
++ 	// necessary for access
++ 	static int offset_;
++ 	inline static int& offset() { return offset_; }
++ 	inline static hdr_udplite* access(const Packet* p) {
++ 		return (hdr_udplite*) p->access(offset_);
++ 	}
++ };
++ 
++ #endif
+\ No newline at end of file
+diff --new-file -crB old/udplite/udplite.tcl new/udplite/udplite.tcl
+*** old/udplite/udplite.tcl	1970-01-01 05:30:00.000000000 +0530
+--- new/udplite/udplite.tcl	2014-11-08 17:07:14.754475000 +0530
+***************
+*** 0 ****
+--- 1,118 ----
++ #set constants
++ set error [lindex $argv 0]
++ set time [lindex $argv 1]
++ set pkt_size [lindex $argv 2]
++ set mode [lindex $argv 3]
++ set ratio [lindex $argv 4]
++ set options [lindex $argv 5]
++ 
++ #If constants weren't provided use defaults
++ if {$error == ""} {
++ 	set error 0.0001
++ 
++ 	puts ""
++ 	puts "Usage : ns udplite.tcl <error_rate> <time_of_simulation> <packet_size> <mode>"
++ 	puts ""
++ 	puts "Using default error of 0.0001"
++ } 
++ 
++ if {$time == ""} {
++ 	set time 10.0
++ 	puts "Using default duration of simulation as 10.0s"
++ }
++ 
++ if {$pkt_size == ""} {
++ 	set pkt_size 240
++ 	puts "Using default packet size for audio : 240 bytes"
++ }
++ 
++ if {$mode == ""} {
++ 	set mode 0
++ 	puts "Using UDPLite mode: 0"
++ }
++ 
++ if {$ratio == ""} {
++ 	set ratio 10
++ 	puts "Using default ratio between data segments and checksum segments to be 10"
++ }
++ 
++ if {$options == ""} {
++ 	set options "All"
++ }
++ 
++ #Create a simulator object
++ set ns [new Simulator]
++ 
++ #Open the NAM trace file
++ 
++ set tf [open out.tr w]
++ $ns trace-all $tf
++ 
++ #set nf [open udplite_out.nam w]
++ #$ns namtrace-all $nf
++ 
++ proc finish {} {
++         global ns tf em udplite sink options error
++         $ns flush-trace
++         #close $nf
++         close $tf
++         #exec nam udplite_out.nam &
++         
++ 
++         set num_recv [$sink set pkts_recv_]
++         set num_sent [$udplite set pkts_sent_]
++         set tp [expr "(double($num_recv)/$num_sent)*100"]
++ 
++         if {$options == "All"} {
++         	puts ""
++         	puts "Number of packets sent by source   : $num_sent"
++         	puts "Number of packets received at sink : $num_recv"
++ 
++         	puts "Observed throughput was            : $tp %"
++         } else {
++         	puts "$error $tp"
++         }
++         exit 0
++ }
++ 
++ set n0 [$ns node]
++ set n1 [$ns node]
++ 
++ $ns duplex-link $n0 $n1 2.5Mb 10ms DropTail
++ $ns duplex-link-op $n0 $n1 orient right
++ 
++ $ns duplex-link-op  $n0 $n1 queuePos 0.5 
++ $ns queue-limit $n0 $n1 1000
++ 
++ set udplite [new Agent/UDPLite]
++ $udplite set packetSize_ $pkt_size
++ $udplite set udp_mode_ $mode
++ $udplite set ratio_ $ratio
++ $ns attach-agent $n0 $udplite
++ 
++ set sink [new Agent/UDPLite]
++ $sink set udp_mode_ $mode
++ $sink drop-target [new Agent/Null]
++ $sink set ratio_ $ratio
++ $ns attach-agent $n1 $sink
++ 
++ $ns connect $udplite $sink
++ 
++ set cbr [new Application/Traffic/CBR]
++ $cbr set packetSize_ $pkt_size
++ $cbr attach-agent $udplite
++ 
++ set em [new ErModel]
++ $em set rate_ $error
++ $em drop-target [new Agent/Null]
++ 
++ $ns link-lossmodel $em $n0 $n1
++ 
++ $ns at 0.0 "$cbr start"
++ 
++ $ns at [expr "$time-1.0"] "$cbr stop"
++ $ns at $time "finish"
++ 
++ $ns run
++ 
++ 
