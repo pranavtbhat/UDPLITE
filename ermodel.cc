@@ -65,9 +65,14 @@ void ErModel::corrupt(Packet* p)
 	//next check if the packet is udplite or udp
 
 	if(pch->ver == 0){
-		for(i=0;i < pch->nunits;i++){
-			for(j=0;j<PAYLOAD_DATA_SIZE;j++){
+		//Its a udplite packet
+
+		for(i=0;i < pch->nunits; i++){
+
+			for(j=0;j< pch->udplite_data[i].size ;j++){
+
 				for(k=0;k<8;k++){
+
 					randvar = Random::uniform();
 					if(randvar <rate_)
 						pch->udplite_data[i].data[j] ^= 1 << k;
@@ -79,10 +84,12 @@ void ErModel::corrupt(Packet* p)
 	else if(pch->ver == 1){
 
 		for(i=0;i< (pch->udp_data)->size ; i++){
+
 			for(j=0;j<8;j++){
 				randvar = Random::uniform();
-				if(randvar <rate_)
+				if(randvar <rate_){
 					(pch->udp_data)->data[i] ^= 1 << j;
+				}
 			}
 		}
 	}

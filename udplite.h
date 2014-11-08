@@ -20,10 +20,11 @@ public:
 	virtual void sendmsg(int nbytes, AppData* data, const char *flags = 0);
 	virtual void recv(Packet* pkt, Handler*);
 	virtual int command(int argc, const char*const* argv);
-	virtual unsigned char compute_checksum(unsigned char[],short length);
+	virtual unsigned short compute_checksum(unsigned char[],short length);
 	double pkts_recv_;
 	int pkts_sent_;
 	int udp_mode_;
+	int ratio_;
 protected:
 	int seqno_;
 };

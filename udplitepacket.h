@@ -3,18 +3,19 @@
 
 #include "packet.h"
 
-#define UDPLITE_HEADER_SIZE 8
+#define UDPLITE_HEADER_SIZE 16
 #define PAYLOAD_DATA_SIZE 10
 
 struct udplite_payload{
-	unsigned char checksum;
-	unsigned char data[PAYLOAD_DATA_SIZE];
+	unsigned short size;
+	unsigned short checksum;
+	unsigned char *data;
 };
 
 struct udp_payload{
-	unsigned char checksum;
+	unsigned short size;
+	unsigned short checksum;
 	unsigned char *data;
-	int size;
 };
 
 
@@ -22,8 +23,8 @@ struct hdr_udplite {
 
 	//Common to both udplite and udp
 	unsigned char ver;                //0 for udplite and 1 for udp
-	unsigned char header_checksum;
-	unsigned char header[8];
+	unsigned short header_checksum;
+	unsigned char header[16];          //8 byte udp header + 4 byte dest address + 4 byte source address 
 
 	//only for udplite
 	unsigned short nunits;
