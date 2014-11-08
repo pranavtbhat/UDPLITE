@@ -168,9 +168,17 @@ void UdpLiteAgent::recv(Packet* pkt, Handler*)
 			if(pch->udplite_data[i].checksum != compute_checksum(pch->udplite_data[i].data,PAYLOAD_DATA_SIZE)){
 				count--;
 			}
+		}
+
+		if(count == 0){
+			drop(pkt);
+			return;
+		}
+		else{
+			pkts_recv_ += ((float)count/pch->nunits);
 		}	
 
-		pkts_recv_ += ((float)count/pch->nunits);
+		
 	}
 	else if(udp_mode_ == 1){
 		//Find out if the packet is useful or not 
@@ -178,6 +186,10 @@ void UdpLiteAgent::recv(Packet* pkt, Handler*)
 
 		if((pch->udp_data)->checksum == compute_checksum((pch->udp_data)->data , (pch->udp_data)->size ))
 			pkts_recv_ +=1;
+		else{
+			drop(pkt);
+			return;
+		}
 	}
 
 	//Standard udp implementation once the headers are sorted out

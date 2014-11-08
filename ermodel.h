@@ -15,7 +15,6 @@ public:
 	
 protected:
 	virtual int command(int argc, const char*const* argv);
-	virtual unsigned char compute_checksum(unsigned char[],short length);
 	double rate_;		// uniform error rate in pkt or byte
 };
 

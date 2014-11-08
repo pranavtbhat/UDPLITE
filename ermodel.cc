@@ -1,9 +1,3 @@
-#ifndef lint
-static const char rcsid[] =
-    "@(#) $Header: /cvsroot/nsnam/ns-2/queue/errmodel.cc,v 1.84 2010/03/08 05:54:53 tom_henderson Exp $ (UCB)";
-#endif
-
-
 #include "config.h"
 #include "udplitepacket.h"
 #include <stdio.h>
@@ -12,7 +6,7 @@ static const char rcsid[] =
 #include "flags.h"
 #include "mcast_ctrl.h"
 #include "ermodel.h"
-#include "srm-headers.h"		// to get the hdr_srm structure
+#include "srm-headers.h"	
 #include "classifier.h"
 #include <math.h>
 
@@ -44,26 +38,6 @@ void ErModel::recv(Packet* p, Handler* h)
 
 	corrupt(p);
 
-	if(pch->header_checksum != compute_checksum(pch->header,UDPLITE_HEADER_SIZE)){
-		//printf("Header Problem-> %d %d\n",pch->header_checksum,compute_checksum(pch->udplite_header,UDPLITE_HEADER_SIZE));
-		drop_->recv(p);
-		return;
-	}
-	
-
-	/*
-	for(i=0;i<pch->nunits;i++){
-		if(pch->payload[i].checksum != compute_checksum(pch->payload[i].data,PAYLOAD_DATA_SIZE)){
-			count++;
-		}
-	}
-	
-	if(count>0){
-		printf("Data Problem-> %d\n",count);
-		drop_->recv(p);
-		return;
-	}
-	*/
 
 	if (target_) {
 	       	target_->recv(p, h);
@@ -115,13 +89,3 @@ void ErModel::corrupt(Packet* p)
 
 }
 
-unsigned char ErModel::compute_checksum(unsigned char array[],short length){
-	unsigned char checksum=0;
-	short i;
-
-	for(i=0;i<length;i++){
-		checksum+=array[i];
-	}
-
-	return checksum;
-}
