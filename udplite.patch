@@ -133,10 +133,29 @@ diff --new-file -crB old/tcl/lib/ns-packet.tcl new/tcl/lib/ns-packet.tcl
   foreach prot $allhdrs {
 diff --new-file -crB old/udplite/ermodel.cc new/udplite/ermodel.cc
 *** old/udplite/ermodel.cc	1970-01-01 05:30:00.000000000 +0530
---- new/udplite/ermodel.cc	2014-11-08 15:36:34.610548000 +0530
+--- new/udplite/ermodel.cc	2014-11-09 14:07:46.737045357 +0530
 ***************
 *** 0 ****
---- 1,98 ----
+--- 1,126 ----
++ /**
++ 	Ns-2 ErModel
++ 	ermodel.cc
++ 	
++ 	Copyright (c) 1997 Regents of the University of California. All rights reserved.
++ 	This product includes software developed by the Daedalus Research Group at the University of California Berkeley.
++ 	
++ 	Framework based on ErrModel implemented by Daedalus Research Group at the University of California Berkeley.
++ 	Simulates a channel with a constant bit error rate defined by the rate_ field.
++ 
++ 	Can be used only with the Udplite Agent developed by authors. Introduces bit errors into checksums, udp payload and individual udplite payloads.
++ 	Errors into the checksum field are indtroduced into the header field instead.
++ 
++ 
++ 	@author Pranav Bhat and Rohit Varkey
++ 	@version 1.0
++ */
++ 
++ 
 + #include "config.h"
 + #include "udplitepacket.h"
 + #include <stdio.h>
@@ -157,6 +176,9 @@ diff --new-file -crB old/udplite/ermodel.cc new/udplite/ermodel.cc
 + 	}
 + } class_ermodel;
 + 
++ /** 
++ 	TCL BINDING
++ */
 + ErModel::ErModel()
 + {
 + 	bind("rate_", &rate_);	
@@ -168,6 +190,9 @@ diff --new-file -crB old/udplite/ermodel.cc new/udplite/ermodel.cc
 + 	return Connector::command(argc, argv);
 + }
 + 
++ /**
++ 	Receives, corrupts and forwards incoming packets 
++ */
 + void ErModel::recv(Packet* p, Handler* h)
 + {
 + 	int i;
@@ -183,6 +208,12 @@ diff --new-file -crB old/udplite/ermodel.cc new/udplite/ermodel.cc
 + 	}
 + }
 + 
++ /**
++ 	Iterates through every bit in the packet. If a randomly generated number is smaller than the provided parameter rate_, the bit is
++ 	inverted.
++ 
++ 	Handles udp and udplite packets separately
++ */
 + void ErModel::corrupt(Packet* p)
 + {
 + 	double randvar;
@@ -207,11 +238,8 @@ diff --new-file -crB old/udplite/ermodel.cc new/udplite/ermodel.cc
 + 		//Its a udplite packet
 + 
 + 		for(i=0;i < pch->nunits; i++){
-+ 
 + 			for(j=0;j< pch->udplite_data[i].size ;j++){
-+ 
 + 				for(k=0;k<8;k++){
-+ 
 + 					randvar = Random::uniform();
 + 					if(randvar <rate_)
 + 						pch->udplite_data[i].data[j] ^= 1 << k;
@@ -221,9 +249,9 @@ diff --new-file -crB old/udplite/ermodel.cc new/udplite/ermodel.cc
 + 	}
 + 
 + 	else if(pch->ver == 1){
++ 		//Its a udp packet
 + 
 + 		for(i=0;i< (pch->udp_data)->size ; i++){
-+ 
 + 			for(j=0;j<8;j++){
 + 				randvar = Random::uniform();
 + 				if(randvar <rate_){
@@ -237,7 +265,7 @@ diff --new-file -crB old/udplite/ermodel.cc new/udplite/ermodel.cc
 + 
 diff --new-file -crB old/udplite/ermodel.h new/udplite/ermodel.h
 *** old/udplite/ermodel.h	1970-01-01 05:30:00.000000000 +0530
---- new/udplite/ermodel.h	2014-11-08 14:32:40.286599000 +0530
+--- new/udplite/ermodel.h	2014-11-09 14:07:46.737045357 +0530
 ***************
 *** 0 ****
 --- 1,22 ----
@@ -263,12 +291,53 @@ diff --new-file -crB old/udplite/ermodel.h new/udplite/ermodel.h
 + 
 + #endif 
 + 
-diff --new-file -crB old/udplite/udplite.cc new/udplite/udplite.cc
-*** old/udplite/udplite.cc	1970-01-01 05:30:00.000000000 +0530
---- new/udplite/udplite.cc	2014-11-08 16:45:59.470492000 +0530
+diff --new-file -crB old/udplite/gen.tcl new/udplite/gen.tcl
+*** old/udplite/gen.tcl	1970-01-01 05:30:00.000000000 +0530
+--- new/udplite/gen.tcl	2014-11-09 14:07:46.761045358 +0530
 ***************
 *** 0 ****
---- 1,297 ----
+--- 1,3 ----
++ for {set i 0.0} {$i<=1} {set i [expr "$i+0.00001"]} {
++ 	puts $i
++ }
+\ No newline at end of file
+diff --new-file -crB old/udplite/udplite.cc new/udplite/udplite.cc
+*** old/udplite/udplite.cc	1970-01-01 05:30:00.000000000 +0530
+--- new/udplite/udplite.cc	2014-11-09 14:07:46.773045358 +0530
+***************
+*** 0 ****
+--- 1,359 ----
++ /**
++ 	Ns-2 Udplite Agent.
++ 	udplite.cc
++ 
++ 	Based on udp.cc developed by the Xerox Corporation. 
++ 	
++ 	Udplite is a variant of the standard User Datagram Protocol that divides the payload data into segments of fixed size. Each segment maintains its own
++ 	checksum field. When the datagram is received by the network layer, it evaluates the checksum on individual segments. Only segments failing the checksum 
++ 	discarded, the entire packet need not be discarded because of a handful of errors. Depending on the segment size used, udplite can show significantly 
++ 	better performance in error prone networks. 
++ 
++ 
++ 	The udplite agent provides significantly better bit error resilience than the standard udp agent.
++ 	Refer udplitepacket.h for the packet format used. 
++ 
++ 	The tcl parameters for the agent are:
++ 		1. packetSize_ : size of the udplite payload.
++ 		2. pkts_sent_  : number of packets sent by the agent.
++ 		3. pkts_recv_  : a real number depicting the summation of the fraction of uncorrupted data in each packet.
++ 		4. udp_mode_   : Udplite provides backwards compatibility with udp. Set this field to 1 to use udp-mode.
++ 		5. ratio_      : Size of the udplite segment Eg. If this field is 30, then there is one checksum field 
++ 						 for every 30 bytes of payload data. Increasing the value of ratio_ saves on redundant packet data, but reduces error resilience.
++ 
++ 	
++ 	@author Pranav Bhat and Rohit Varkey
++ 	@version 1.0
++ */
++ 
++ 
++ 
++ 
 + #include "udplite.h"
 + #include "udplitepacket.h"
 + #include "rtp.h"
@@ -285,6 +354,10 @@ diff --new-file -crB old/udplite/udplite.cc new/udplite/udplite.cc
 + 	}
 + } class_udplite_agent;
 + 
++ 
++ /**
++ 	TCL BINDING 
++ */
 + UdpLiteAgent::UdpLiteAgent() : Agent(PT_UDPLite), seqno_(-1)
 + {
 + 	bind("packetSize_", &size_);
@@ -294,6 +367,9 @@ diff --new-file -crB old/udplite/udplite.cc new/udplite/udplite.cc
 + 	bind("ratio_", &ratio_);
 + }
 + 
++ /**
++ 	TCL BINDING 
++ */
 + UdpLiteAgent::UdpLiteAgent(packet_t type) : Agent(type)
 + {
 + 	bind("packetSize_", &size_);
@@ -303,8 +379,15 @@ diff --new-file -crB old/udplite/udplite.cc new/udplite/udplite.cc
 + 	bind("ratio_", &ratio_);
 + }
 + 
-+ // put in timestamp and sequence number, even though UDP doesn't usually 
-+ // have one.
++ /**
++ 	Function to create and sent udp packets.
++ 	Seperate headers are used for udplite and udp.
++ 
++ 	Udplite can be used like a udp agent. It retains the ability to send and receive AppData. It uses a separate packet header to allocated data and checksums
++ 	to simulate udp and udplite performance in error prone networks.
++ 
++ 	Malloc is used instead of calloc to facilitate checksum computation on random data.
++ */
 + void UdpLiteAgent::sendmsg(int nbytes, AppData* data, const char* flags)
 + {
 + 	Packet *p;
@@ -350,21 +433,23 @@ diff --new-file -crB old/udplite/udplite.cc new/udplite/udplite.cc
 + 		hdr_rtp* rh = hdr_rtp::access(p);
 + 		rh->flags() = 0; 
 + 		rh->seqno() = ++seqno_;
-+ 		hdr_cmn::access(p)->timestamp() = 
-+ 		    (u_int32_t)(SAMPLERATE*local_time);
++ 		hdr_cmn::access(p)->timestamp() = (u_int32_t)(SAMPLERATE*local_time);
 + 		// add "beginning of talkspurt" labels (tcl/ex/test-rcvr.tcl)
 + 		if (flags && (0 ==strcmp(flags, "NEW_BURST")))
 + 			rh->flags() |= RTP_M;
++ 		//set application data
 + 		p->setdata(data);
 + 
 + 		//Now process the udplite headers
 + 
 + 		if(udp_mode_ == 0){
++ 
++ 				//Udplite packet
 + 				hdr_udplite *pch = hdr_udplite::access(p);
 + 
-+ 				pch->ver = 0; //This is a udplite packet
-+ 				pch->nunits = ceil((float)size_/ratio_); //Compute the number of udplite_segments
-+ 				pch->udplite_data = (struct udplite_payload*)malloc(sizeof(struct udplite_payload)*pch->nunits);
++ 				pch->ver = 0; 																						//set version to 0 for udplite
++ 				pch->nunits = ceil((float)size_/ratio_); 															//Compute the number of udplite_segments
++ 				pch->udplite_data = (struct udplite_payload*)malloc(sizeof(struct udplite_payload)*pch->nunits);	//Allocate memory to all udplite segments
 + 
 + 				//compute header checksum
 + 				pch->header_checksum = compute_checksum(pch->header,UDPLITE_HEADER_SIZE);
@@ -374,51 +459,56 @@ diff --new-file -crB old/udplite/udplite.cc new/udplite/udplite.cc
 + 					udplite_payload *unit = &pch->udplite_data[i];
 + 
 + 					unit->size = ratio_;
-+ 					unit->data = (unsigned char *)malloc(sizeof(unsigned char)*ratio_);
-+ 					unit->checksum = compute_checksum(unit->data, ratio_);
++ 					unit->data = (unsigned char *)malloc(sizeof(unsigned char)*ratio_);								//Fill up segment with data
++ 					unit->checksum = compute_checksum(unit->data, ratio_);											//Compute segment checksum
 + 				}
 + 		}
 + 		else if(udp_mode_ == 1){
 + 			//Build UDP packet header
 + 			hdr_udplite *pch = hdr_udplite::access(p);
 + 
-+ 			pch->ver = 1; //This is not a udplite packet
-+ 			pch->udp_data = (struct udp_payload*)malloc(sizeof(struct udp_payload));
-+ 			(pch->udp_data)->data = (unsigned char *)malloc(sizeof(unsigned char)*size_);
++ 			pch->ver = 1; 																							//This is not a udplite packet
++ 			pch->udp_data = (struct udp_payload*)malloc(sizeof(struct udp_payload));								//Allocate memory to udp payload
++ 			(pch->udp_data)->data = (unsigned char *)malloc(sizeof(unsigned char)*size_);							//Fill up payload with data
 + 			(pch->udp_data)->size = size_;
 + 
 + 			//compute header checksum
-+ 			pch->header_checksum = compute_checksum(pch->header,UDPLITE_HEADER_SIZE);
++ 			pch->header_checksum = compute_checksum(pch->header,UDPLITE_HEADER_SIZE);								
 + 
 + 			//compute udp_payload checksum
 + 			(pch->udp_data)->checksum = compute_checksum((pch->udp_data)->data , size_ );
 + 		}
 + 
++ 		//Increment number of packets sent
 + 		pkts_sent_++;
++ 		//Send packet to connector
 + 		target_->recv(p);
 + 	}
++ 
++ 	//Process the left over data
 + 	n = nbytes % size_;
++ 
 + 	if (n > 0) {
-+ 		printf("mod-n %d\n",n);
++ 		//Process IP headers
 + 		p = allocpkt();
 + 		hdr_cmn::access(p)->size() = n;
 + 		hdr_rtp* rh = hdr_rtp::access(p);
 + 		rh->flags() = 0;
 + 		rh->seqno() = ++seqno_;
-+ 		hdr_cmn::access(p)->timestamp() = 
-+ 		    (u_int32_t)(SAMPLERATE*local_time);
++ 		hdr_cmn::access(p)->timestamp() = (u_int32_t)(SAMPLERATE*local_time);
 + 		// add "beginning of talkspurt" labels (tcl/ex/test-rcvr.tcl)
 + 		if (flags && (0 == strcmp(flags, "NEW_BURST")))
 + 			rh->flags() |= RTP_M;
++ 		//Set AppData
 + 		p->setdata(data);
 + 
 + 		if(udp_mode_ == 0){
 + 			//Build UDPLite packet header
 + 				hdr_udplite *pch = hdr_udplite::access(p);
 + 
-+ 				pch->ver = 0; //This is a udplite packet
-+ 				pch->nunits = ceil((float)n/ratio_);
-+ 				pch->udplite_data = (struct udplite_payload *)malloc(sizeof(struct udplite_payload)*pch->nunits);
++ 				pch->ver = 0; 																								//This is a udplite packet
++ 				pch->nunits = ceil((float)n/ratio_);																		//Compute the number of udplite_segments
++ 				pch->udplite_data = (struct udplite_payload *)malloc(sizeof(struct udplite_payload)*pch->nunits);			//Allocate memory to all udplite segments
 + 
 + 				//compute header checksum
 + 				pch->header_checksum = compute_checksum(pch->header,UDPLITE_HEADER_SIZE);
@@ -428,8 +518,8 @@ diff --new-file -crB old/udplite/udplite.cc new/udplite/udplite.cc
 + 					udplite_payload *unit = &pch->udplite_data[i];
 + 
 + 					unit->size = ratio_;
-+ 					unit->data = (unsigned char *)malloc(sizeof(unsigned char)*ratio_);
-+ 					unit->checksum = compute_checksum(unit->data, ratio_);
++ 					unit->data = (unsigned char *)malloc(sizeof(unsigned char)*ratio_);										//Fill up segment with data
++ 					unit->checksum = compute_checksum(unit->data, ratio_);													//Compute segment checksum
 + 				}
 + 		}
 + 		else if(udp_mode_ == 1){
@@ -437,8 +527,8 @@ diff --new-file -crB old/udplite/udplite.cc new/udplite/udplite.cc
 + 			hdr_udplite *pch = hdr_udplite::access(p);
 + 
 + 			pch->ver = 1; //This is not a udplite packet
-+ 			pch->udp_data = (struct udp_payload*)malloc(sizeof(struct udp_payload));
-+ 			(pch->udp_data)->data = (unsigned char *)malloc(sizeof(unsigned char)*n);
++ 			pch->udp_data = (struct udp_payload*)malloc(sizeof(struct udp_payload));										//Allocate memory to udp payload
++ 			(pch->udp_data)->data = (unsigned char *)malloc(sizeof(unsigned char)*n);										//Fill up payload with data
 + 			(pch->udp_data)->size = n;
 + 
 + 			//compute header checksum
@@ -448,15 +538,23 @@ diff --new-file -crB old/udplite/udplite.cc new/udplite/udplite.cc
 + 			(pch->udp_data)->checksum = compute_checksum((pch->udp_data)->data , n );
 + 
 + 		}
-+ 		
++ 		//Increment number of packets sent
 + 		pkts_sent_++;
++ 		//Send packet to connector
 + 		target_->recv(p);
 + 	}
 + 	idle();
 + }
++ 
++ /**
++ 	Function to receive udplite packets. Decides how much of the packet is useful and computes pkts_recv_ accordingly.
++ 	Drops the packet if every segment is corrupted. Otherwise sends the entire AppData to application layer.
++ 
++ 	In udp mode, packet is dropped if even part of it is corrupted.
++ 
++ */
 + void UdpLiteAgent::recv(Packet* pkt, Handler*)
 + {
-+ 	int x;
 + 
 + 	if(udp_mode_ == 0){
 + 		//It's a udplite packet
@@ -563,13 +661,15 @@ diff --new-file -crB old/udplite/udplite.cc new/udplite/udplite.cc
 + 	while(checksum >> 16){
 + 		checksum = (checksum & 0xFFFF) + (checksum >> 16);
 + 	}
++ 
++ 	//Find one's complement of checksum
 + 	checksum = ~checksum;
 + 	return (unsigned short)checksum;
 + }
 \ No newline at end of file
 diff --new-file -crB old/udplite/udplite.h new/udplite/udplite.h
 *** old/udplite/udplite.h	1970-01-01 05:30:00.000000000 +0530
---- new/udplite/udplite.h	2014-11-08 14:32:40.986599000 +0530
+--- new/udplite/udplite.h	2014-11-09 14:07:46.773045358 +0530
 ***************
 *** 0 ****
 --- 1,32 ----
@@ -607,7 +707,7 @@ diff --new-file -crB old/udplite/udplite.h new/udplite/udplite.h
 + #endif
 diff --new-file -crB old/udplite/udplitepacket.cc new/udplite/udplitepacket.cc
 *** old/udplite/udplitepacket.cc	1970-01-01 05:30:00.000000000 +0530
---- new/udplite/udplitepacket.cc	2014-10-24 19:27:57.098142000 +0530
+--- new/udplite/udplitepacket.cc	2014-11-09 14:07:46.777045358 +0530
 ***************
 *** 0 ****
 --- 1,10 ----
@@ -624,10 +724,17 @@ diff --new-file -crB old/udplite/udplitepacket.cc new/udplite/udplitepacket.cc
 \ No newline at end of file
 diff --new-file -crB old/udplite/udplitepacket.h new/udplite/udplitepacket.h
 *** old/udplite/udplitepacket.h	1970-01-01 05:30:00.000000000 +0530
---- new/udplite/udplitepacket.h	2014-11-08 15:02:40.762575000 +0530
+--- new/udplite/udplitepacket.h	2014-11-09 14:07:46.777045358 +0530
 ***************
 *** 0 ****
---- 1,44 ----
+--- 1,71 ----
++ /** 
++ 	Header file for the Udplite Agent.
++ 
++ 	@author Pranav Bhat and Rohit Varkey
++ 	@version 1.0
++ */
++ 
 + #ifndef UDPLITE_H_
 + #define UDPLITE_H_
 + 
@@ -636,12 +743,22 @@ diff --new-file -crB old/udplite/udplitepacket.h new/udplite/udplitepacket.h
 + #define UDPLITE_HEADER_SIZE 16
 + #define PAYLOAD_DATA_SIZE 10
 + 
++ 
++ /**
++ 	This structure simulates a segment of the udplite payload. The size field denotes the coverage of the checksum.
++ 	The checksum field is exactly 16 bits in length.
++ */
 + struct udplite_payload{
 + 	unsigned short size;
 + 	unsigned short checksum;
 + 	unsigned char *data;
 + };
 + 
++ /**
++ 	This structure simulates the udp payload
++ 	The size field denotes the length of udp data.
++ 	The checksum field is exactly 16 bits in length.
++ */	
 + struct udp_payload{
 + 	unsigned short size;
 + 	unsigned short checksum;
@@ -649,6 +766,16 @@ diff --new-file -crB old/udplite/udplitepacket.h new/udplite/udplitepacket.h
 + };
 + 
 + 
++ /**
++ 	An additional packet header to simulate updlite performance. Instead of using data field in hdr_cmn we decided to introduce hdr_udplite to store
++ 	data and checksums.
++ 
++ 	hdr_udplite offers backwards compatibility with udp as well, the ver field must be set to 1.
++ 
++ 	The header_checksum field is is common to both udp and udplite. Network implementations of udp use a single checksum field for headers and data, and
++ 	a seperate IP checksum. However due to the way packets are created and transmitted in ns2 (as pointers) without any clear demarcation between the IP 
++ 	protocol and udp protocol, we maintain seperate checksums for the headers and the payloads.
++ */
 + struct hdr_udplite {
 + 
 + 	//Common to both udplite and udp
@@ -657,11 +784,11 @@ diff --new-file -crB old/udplite/udplitepacket.h new/udplite/udplitepacket.h
 + 	unsigned char header[16];          //8 byte udp header + 4 byte dest address + 4 byte source address 
 + 
 + 	//only for udplite
-+ 	unsigned short nunits;
-+ 	struct udplite_payload *udplite_data;
++ 	unsigned short nunits;					//Denotes the number of payload segments
++ 	struct udplite_payload *udplite_data;	//Pointer to the array of segments
 + 
 + 	//only for udp
-+ 	struct udp_payload *udp_data;
++ 	struct udp_payload *udp_data;			//Pointer to the payload
 + 
 + 	// necessary for access
 + 	static int offset_;
@@ -675,10 +802,29 @@ diff --new-file -crB old/udplite/udplitepacket.h new/udplite/udplitepacket.h
 \ No newline at end of file
 diff --new-file -crB old/udplite/udplite.tcl new/udplite/udplite.tcl
 *** old/udplite/udplite.tcl	1970-01-01 05:30:00.000000000 +0530
---- new/udplite/udplite.tcl	2014-11-08 17:07:14.754475000 +0530
+--- new/udplite/udplite.tcl	2014-11-09 14:07:46.777045358 +0530
 ***************
 *** 0 ****
---- 1,118 ----
+--- 1,137 ----
++ ##
++ #	TCL script to demonstrate the working of udplite
++ # 	Takes five arguemnts through the command line interface:
++ #	1. error : The bit error rate for the channel
++ #	2. time  : Duration of the simulation
++ #  	3. pkt_size : size of the udplite packets
++ # 	4. mode   : 0 for udplite or 1 for udp
++ #   5. ratio  : size of the udplite data segments
++ #   6. options: Leave it blank to print in a user friendly manner. Any other value prints trace values
++ #
++ #   The ermodel connector is required to introduce bit errors into udplite packets. It works exactly like
++ #	the Ermodel connector provided by Ns-2.
++ #
++ #	@author : Pranav Bhat and Rohit Varkey
++ #   @version: 1.0
++ ##	
++ 
++ 
++ 
 + #set constants
 + set error [lindex $argv 0]
 + set time [lindex $argv 1]
