@@ -1,3 +1,22 @@
+/**
+	Ns-2 ErModel
+	ermodel.cc
+	
+	Copyright (c) 1997 Regents of the University of California. All rights reserved.
+	This product includes software developed by the Daedalus Research Group at the University of California Berkeley.
+	
+	Framework based on ErrModel implemented by Daedalus Research Group at the University of California Berkeley.
+	Simulates a channel with a constant bit error rate defined by the rate_ field.
+
+	Can be used only with the Udplite Agent developed by authors. Introduces bit errors into checksums, udp payload and individual udplite payloads.
+	Errors into the checksum field are indtroduced into the header field instead.
+
+
+	@author Pranav Bhat and Rohit Varkey
+	@version 1.0
+*/
+
+
 #include "config.h"
 #include "udplitepacket.h"
 #include <stdio.h>
@@ -18,6 +37,9 @@ public:
 	}
 } class_ermodel;
 
+/** 
+	TCL BINDING
+*/
 ErModel::ErModel()
 {
 	bind("rate_", &rate_);	
@@ -29,6 +51,9 @@ int ErModel::command(int argc, const char*const* argv)
 	return Connector::command(argc, argv);
 }
 
+/**
+	Receives, corrupts and forwards incoming packets 
+*/
 void ErModel::recv(Packet* p, Handler* h)
 {
 	int i;
@@ -44,6 +69,12 @@ void ErModel::recv(Packet* p, Handler* h)
 	}
 }
 
+/**
+	Iterates through every bit in the packet. If a randomly generated number is smaller than the provided parameter rate_, the bit is
+	inverted.
+
+	Handles udp and udplite packets separately
+*/
 void ErModel::corrupt(Packet* p)
 {
 	double randvar;
@@ -68,11 +99,8 @@ void ErModel::corrupt(Packet* p)
 		//Its a udplite packet
 
 		for(i=0;i < pch->nunits; i++){
-
 			for(j=0;j< pch->udplite_data[i].size ;j++){
-
 				for(k=0;k<8;k++){
-
 					randvar = Random::uniform();
 					if(randvar <rate_)
 						pch->udplite_data[i].data[j] ^= 1 << k;
@@ -82,9 +110,9 @@ void ErModel::corrupt(Packet* p)
 	}
 
 	else if(pch->ver == 1){
+		//Its a udp packet
 
 		for(i=0;i< (pch->udp_data)->size ; i++){
-
 			for(j=0;j<8;j++){
 				randvar = Random::uniform();
 				if(randvar <rate_){

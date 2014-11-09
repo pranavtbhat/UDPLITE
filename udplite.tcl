@@ -1,3 +1,22 @@
+##
+#	TCL script to demonstrate the working of udplite
+# 	Takes five arguemnts through the command line interface:
+#	1. error : The bit error rate for the channel
+#	2. time  : Duration of the simulation
+#  	3. pkt_size : size of the udplite packets
+# 	4. mode   : 0 for udplite or 1 for udp
+#   5. ratio  : size of the udplite data segments
+#   6. options: Leave it blank to print in a user friendly manner. Any other value prints trace values
+#
+#   The ermodel connector is required to introduce bit errors into udplite packets. It works exactly like
+#	the Ermodel connector provided by Ns-2.
+#
+#	@author : Pranav Bhat and Rohit Varkey
+#   @version: 1.0
+##	
+
+
+
 #set constants
 set error [lindex $argv 0]
 set time [lindex $argv 1]
